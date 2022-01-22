@@ -1,0 +1,52 @@
+---
+title: "Biomarker cohort demographics"
+author: "Andre Kim"
+date:  "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+library(glue)
+library(broom)
+library(meta)
+```
+
+
+## Data included
+We use the dataset as :   
+- Epi data is based on release V3.1  
+- GxE set is used for the analyses (prevalent cases will be included)  
+- Case only studies weren’t included.  
+- E variables are [methrswklns10], [methrswklnsqc2] and [active.met]  
+
+
+** [methrswklns10]: [methrswklns]/10 as “MET-hr/wk, leisure+undifferentiated activity, per 10 hrs/wk”
+
+** [methrswklnsqc2]: study-sex-specific quartiles of [methrswklns] “MET-hr/wk, leisure+undifferentiated activity” as continuous.
+
+** [active.met] defined by using [methrswklns] “MET-hr/wk, leisure+undifferentiated activity”. No if [methrswklns] <8.75, Yes if >=8.75.
+
+
+## active.met using cutoff 8.75 MET*hr/week
+
+### Counts
+```{r}
+x <- readRDS("~/Desktop/gwis_test/active_met_875/data/FIGI_v3.1_gxeset_active_met_875_basic_covars_glm.rds") %>% 
+  mutate(active_met_875 = as.factor(ifelse(active_met_875 == 0, "No", "Yes")), 
+         outcome = as.factor(ifelse(outcome == 0, "Control", "Case")))
+```
+
+outcome vs. active_met_875
+```{r}
+table(x$outcome, x$active_met_875)
+```
+
+study_gxe vs active_met_875
+```{r}
+table(x$study_gxe, x$active_met_875)
+```
+
+

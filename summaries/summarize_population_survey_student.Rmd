@@ -1,0 +1,314 @@
+---
+title: "Vaccine study survey summary - student"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+<style type="text/css">
+<!-- .main-container { -->
+<!--   max-width: 1800px !important; -->
+<!--   margin-left: auto; -->
+<!--   margin-right: auto; -->
+<!-- } -->
+
+<!-- table, td, th { -->
+<!--   border: none; -->
+<!--   padding-left: 1em; -->
+<!--   padding-right: 1em; -->
+<!--   margin-top: 1em; -->
+<!--   margin-bottom: 1em; -->
+<!-- } -->
+
+/* Whole document: */
+body{
+  font-family: Arial;
+  font-size: 12pt;
+}
+/* Headers */
+h1{
+font-size: 18pt;
+}
+
+h2,h3,h4,h5,h6{
+font-size: 17pt;
+}
+
+
+
+</style>
+
+```{r include = F}
+library(tidyverse)
+library(glue)
+library(DT)
+library(kableExtra)
+library(expss)
+library(janitor)
+```
+
+
+<!-- # Comments   -->
+
+<!-- Summary tables for Vaccine study survey responses. We matched survey responses with PnC using a combination of name, DOB, and email. We limited responses to those flagged as "survey completed" -->
+
+<!-- ## Data sources: -->
+<!-- - Population: PnC report "SARS-CoV-2 USC Population Compliance Report"   -->
+<!--   - DOB and Email (for matchin purposes)   -->
+<!--   - Testing/infection status (see below)   -->
+<!-- - Vaccination: PnC report "COVID Vaccine 1st and 2nd Dose Received - Including History Documentation"   -->
+<!-- - Testing: PnC report "SARS-CoV-2 Viral Lab Panel Detail [Biostats]"   -->
+<!--   - main source of testing/infection status   -->
+<!-- - Survey: Redcap   -->
+
+<!-- ## Questions -->
+<!-- - Testing and population reports don't seem to match 100% (~ 1500 of them are students). Tables below are based only on population compliance and vaccine reports   -->
+<!-- - a few individuals responded to the survey more than once, with different responses in some fields - sometimes because of typos, different emails, or changes in response for some fields. I chose to keep the most recent entries in these cases   -->
+
+
+--- 
+
+# Vaccination information - STUDENTS
+```{r}
+# read data, create labels for legibility
+out <- readRDS("~/git/USC_VaccineStudy/data/vaccinestudy_survey_student_deidentified_2021-06-16.rds") %>% 
+  dplyr::mutate(PSS_VACCINE_YN.FACTOR = fct_relevel(fct_explicit_na(factor(PSS_VACCINE_YN.FACTOR), na_level = "Unknown"), "No"),
+                VAC_ISPARTIALLYVACCINATED = fct_explicit_na(factor(VAC_ISPARTIALLYVACCINATED, labels = 'Yes'), na_level = "Unknown"), 
+                VAC_ISFULLYVACCINATED = fct_explicit_na(factor(VAC_ISFULLYVACCINATED, labels = c("No", "Yes")), na_level = "Unknown"))
+
+```
+
+
+Self reported vaccination status
+```{r }
+outtab <- out %>% 
+  tabyl(PSS_VACCINE_YN.FACTOR, show_na = T) %>% 
+  mutate(percent = round(percent, 2))
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+
+PnC partial vs full vaccination
+```{r }
+outtab <- out %>% 
+  tabyl(VAC_ISPARTIALLYVACCINATED, VAC_ISFULLYVACCINATED, show_na = T) %>% 
+  adorn_percentages("row") %>% 
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns() %>% adorn_title()
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+
+For partially vaccinated individuals which, vaccine did they receive
+
+```{r }
+outtab <- out %>%
+  dplyr::filter(VAC_ISPARTIALLYVACCINATED == "Yes" & VAC_ISFULLYVACCINATED == "No") %>% 
+  tabyl(PSS_VACCINE_TYPE.FACTOR, show_na = T) 
+  # adorn_percentages("row") %>% 
+  # adorn_pct_formatting(digits = 2) %>% 
+  # adorn_ns() %>% adorn_title()
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+
+Tabulate self-reported vaccination status with individuals who received any vaccine
+```{r}
+outtab <- out %>% 
+  tabyl(PSS_VACCINE_YN.FACTOR, VAC_ISPARTIALLYVACCINATED, show_na = T) %>% 
+  adorn_percentages("row") %>% 
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns() %>% adorn_title()
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+
+<br>
+
+
+Closer look at individuals who self-report vaccine = "No" + PnC vaccine = "Yes".  
+Among this subset, how many filled out population survey **prior** to OR **on the day** of vaccination? 
+```{r, echo = T}
+outtab <- out %>% 
+  dplyr::mutate(survey_before_vaccine = ifelse(as.Date(PSS_CONSENT_TIMESTAMP) <= as.Date(VAC_FIRSTDOSE), "Yes", "No")) %>% 
+  dplyr::filter(PSS_VACCINE_YN.FACTOR == "No" & VAC_ISPARTIALLYVACCINATED == "Yes") %>% 
+  tabyl(survey_before_vaccine, show_na = T) 
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+
+
+Vaccination timing
+
+First dose 
+```{r}
+
+outtab <- out %>% 
+  mutate(vaccine_date = as.Date(VAC_FIRSTDOSE)) %>% 
+  filter(vaccine_date > "2020-12-01") %>% 
+  group_by(vaccine_date) %>% 
+  summarise(n = n())
+
+ggplot() +
+  geom_line(aes(outtab$vaccine_date, outtab$n)) + 
+  theme_bw()
+```
+
+
+Second dose 
+```{r}
+
+outtab <- out %>% 
+  mutate(vaccine_date = as.Date(VAC_LASTDOSE)) %>% 
+  filter(vaccine_date > "2020-12-01") %>% 
+  group_by(vaccine_date) %>% 
+  summarise(n = n())
+
+ggplot() +
+  geom_line(aes(outtab$vaccine_date, outtab$n)) + 
+  theme_bw()
+```
+
+
+<br>
+ 
+---- 
+
+<br>
+
+
+
+# Vaccination information - STAFF
+```{r}
+# read data, create labels for legibility
+out <- readRDS("~/git/USC_VaccineStudy/data/vaccinestudy_survey_staff_deidentified_2021-06-16.rds") %>% 
+  dplyr::mutate(PSS_VACCINE_YN.FACTOR = fct_relevel(fct_explicit_na(factor(PSS_VACCINE_YN.FACTOR), na_level = "Unknown"), "No"),
+                VAC_ISPARTIALLYVACCINATED = fct_explicit_na(factor(VAC_ISPARTIALLYVACCINATED, labels = 'Yes'), na_level = "Unknown"), 
+                VAC_ISFULLYVACCINATED = fct_explicit_na(factor(VAC_ISFULLYVACCINATED, labels = c("No", "Yes")), na_level = "Unknown"))
+
+```
+
+<br>
+
+Self reported vaccination status
+```{r }
+outtab <- out %>% 
+  tabyl(PSS_VACCINE_YN.FACTOR, show_na = T) %>% 
+  mutate(percent = round(percent, 2))
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+
+PnC partial vs full vaccination
+```{r }
+outtab <- out %>% 
+  tabyl(VAC_ISPARTIALLYVACCINATED, VAC_ISFULLYVACCINATED, show_na = T) %>% 
+  adorn_percentages("row") %>% 
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns() %>% adorn_title()
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+
+
+For partially vaccinated individuals which, vaccine did they receive
+
+```{r }
+outtab <- out %>%
+  dplyr::filter(VAC_ISPARTIALLYVACCINATED == "Yes" & VAC_ISFULLYVACCINATED == "No") %>% 
+  tabyl(PSS_VACCINE_TYPE.FACTOR, show_na = T) 
+  # adorn_percentages("row") %>% 
+  # adorn_pct_formatting(digits = 2) %>% 
+  # adorn_ns() %>% adorn_title()
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+
+
+Tabulate self-reported vaccination status with individuals who received any vaccine
+```{r}
+outtab <- out %>% 
+  tabyl(PSS_VACCINE_YN.FACTOR, VAC_ISPARTIALLYVACCINATED, show_na = T) %>% 
+  adorn_percentages("row") %>% 
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns() %>% adorn_title()
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+```
+
+<br>
+
+Closer look at individuals who self-report vaccine = "No" + PnC vaccine = "Yes".  
+Among this subset, how many filled out population survey **prior** to OR **on the day** of vaccination? 
+```{r, echo = T}
+outtab <- out %>% 
+  dplyr::mutate(survey_before_vaccine = ifelse(as.Date(PSS_CONSENT_TIMESTAMP) <= as.Date(VAC_FIRSTDOSE), "Yes", "No")) %>% 
+  dplyr::filter(PSS_VACCINE_YN.FACTOR == "No" & VAC_ISPARTIALLYVACCINATED == "Yes") %>% 
+  tabyl(survey_before_vaccine, show_na = T) 
+
+kable(outtab) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+
+Vaccination timing
+
+First dose 
+```{r}
+
+outtab <- out %>% 
+  mutate(vaccine_date = as.Date(VAC_FIRSTDOSE)) %>% 
+  filter(vaccine_date > "2020-12-01") %>% 
+  group_by(vaccine_date) %>% 
+  summarise(n = n())
+
+ggplot() +
+  geom_line(aes(outtab$vaccine_date, outtab$n)) + 
+  theme_bw()
+```
+
+
+Second dose 
+```{r}
+
+outtab <- out %>% 
+  mutate(vaccine_date = as.Date(VAC_LASTDOSE)) %>% 
+  filter(vaccine_date > "2020-12-01") %>% 
+  group_by(vaccine_date) %>% 
+  summarise(n = n())
+
+ggplot() +
+  geom_line(aes(outtab$vaccine_date, outtab$n)) + 
+  theme_bw()
+```
+
+

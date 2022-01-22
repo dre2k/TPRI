@@ -1,0 +1,1057 @@
+---
+title: "COVID booster data explore"
+date: '`r paste("Updated on", Sys.Date())`'
+# output: word_document
+# always_allow_html: true
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    toc_depth: 2
+    code_folding: hide
+    theme: "united"
+---
+
+<style type ~ text/css">
+p{
+  color:grey;
+}
+table {
+  width: 50%;  
+} 
+</style>
+
+```{r setup, include=T, message = F, warning = F, error = F}
+knitr::opts_chunk$set(echo = T, message = F, warning = F, error = F)
+# options(kableExtra.auto_format = FALSE)
+options(knitr.kable.NA = '')
+
+library(tidyverse)
+library(data.table)
+library(ggplot2)
+library(qqman)
+library(table1)
+library(rlang)
+library(broom)
+library(DT)
+library(grid)
+library(stargazer)
+library(forcats)
+library(kableExtra)
+library(reticulate)
+library(glue)
+library(janitor)
+library(logbin)
+library(readxl)
+library(DT)
+library(ltm)
+library(tableone)
+library(lmtest)
+library(sandwich)
+
+wdir = glue("~/Desktop/vaccine")
+
+# -------------------------- #
+# some convenience functions
+# -------------------------- #
+qwerty <- function(dat, var) {
+  names(dat)[grepl(var, names(dat))]
+}
+
+create_table_oneway <- function(dataset, var) {
+  out <- dataset %>% 
+    tabyl({{var}}) %>% 
+    # adorn_percentages("col") %>%
+    adorn_pct_formatting(digits = 2) # %>%
+    # adorn_ns(position = 'front')
+  
+  kable(out) %>% 
+    kable_styling("striped", full_width = F, position = 'left')
+}
+
+
+create_table_twoway <- function(dataset, var1, var2) {
+  out <- dataset %>%
+    tabyl({{var1}}, {{var2}}) %>%
+    adorn_percentages("col") %>%
+    adorn_pct_formatting(digits = 2) %>%
+    adorn_ns(position = 'front')
+
+  aa <- enquo(var2)
+  bb <- eval(quo_name(aa))
+  
+  myHeader = c(" " = 1, bb = length(unique(as.factor(dplyr::pull(dataset, {{var2}})))))
+  names(myHeader) = c(" ", bb)
+  
+  kable(out) %>%
+    kable_styling("striped", full_width = F, position = 'left') %>%
+    add_header_above(header = myHeader)
+}
+
+#https://cimentadaj.github.io/blog/2016-08-22-producing-stargazer-tables-with-odds-ratios-and-standard-errors-in-r/producing-stargazer-tables-with-odds-ratios-and-standard-errors-in-r/
+stargazer2 <- function(model, odd.ratio = F, ...) {
+  if(!("list" %in% class(model))) model <- list(model)
+    
+  if (odd.ratio) {
+    coefOR2 <- lapply(model, function(x) exp(coef(x)))
+    seOR2 <- lapply(model, function(x) exp(coef(x)) * summary(x)$coef[, 2])
+    p2 <- lapply(model, function(x) summary(x)$coefficients[, 4])
+    stargazer(model, coef = coefOR2, se = seOR2, p = p2, ...)
+    
+  } else {
+    stargazer(model, ...)
+  }
+}
+
+# ------------------------ #
+# input data
+# ------------------------ #
+student <- readRDS(glue("{wdir}/health_survey_student_deidentified_redcap_2021_10_01.rds"))
+staff <- readRDS(glue("{wdir}/health_survey_staff_deidentified_redcap_2021_10_01.rds"))
+
+# let's create combined dataset for subset of variables
+dat.student <- student %>% 
+  dplyr::select(demographics_timestamp, 
+                vaccine_booster,
+                vaccinated,
+                will_get_vaccine,
+                pop_gender, pop_covid_yn,
+                starts_with("behaviours"),
+                starts_with("knowledge"),
+                starts_with("coras"),
+                starts_with("attitudes"),
+                covid_knowledge,
+                contains(c("race", "pop_birth"))) %>% 
+  mutate(division = "student")
+
+
+
+dat.staff <- staff %>% 
+  dplyr::select(demographics_timestamp, 
+                pop_gender,
+                vaccinated,
+                vaccine_booster,
+                will_get_vaccine,
+                pop_sex, pop_covid_yn,
+                starts_with("behaviours"),
+                starts_with("knowledge"),
+                starts_with("coras"),
+                starts_with("attitudes"),
+                covid_knowledge,
+                contains(c("race", "pop_birth"))) %>% 
+  mutate(division = "staff")
+
+
+# Latinx group
+latinx_grp <- c("Black,Latinx",
+                "AIAN,Latinx", 
+                "Asian,Latinx", 
+                "Latinx,ME",
+                "Latinx,NHPI", 
+                "Latinx,Other", 
+                "Latinx,White")
+
+output <- bind_rows(dat.staff, dat.student) %>% 
+  mutate(booster = case_when(is.na(vaccine_booster) ~ NA_real_, 
+                             vaccine_booster == 1 ~ 0,
+                             TRUE ~ 1),
+         # Gender ID
+         gender_id = factor(case_when(pop_gender == 1 ~ "Male", 
+                                      pop_gender == 3 ~ "Male", 
+                                      pop_gender == 2 ~ "Female", 
+                                      pop_gender == 4 ~ "Female", 
+                                      TRUE ~ "Other")),
+         vaccine_booster_factor = factor(vaccine_booster, label = c("Never", "Once a year", "Twice a year", "Three times a year", "As many times as needed")),
+         pop_sex = factor(pop_sex, label = c("Male", "Female", "Prefer not to answer")),
+         # Race
+         # change coding so that any black = black, any latinx = latinx
+         # all other combinations = "Multi"
+         pop_race___1 = factor(pop_race___1, label = c(NA, "Black")),
+         pop_race___2 = factor(pop_race___2, label = c(NA, "AIAN")),
+         pop_race___3 = factor(pop_race___3, label = c(NA, "Asian")),
+         pop_race___4 = factor(pop_race___4, label = c(NA, "Latinx")),
+         pop_race___5 = factor(pop_race___5, label = c(NA, "NHPI")),
+         pop_race___6 = factor(pop_race___6, label = c(NA, "ME")),
+         pop_race___7 = factor(pop_race___7, label = c(NA, "White")),
+         pop_race___8 = factor(pop_race___8, label = c(NA, "Other")), 
+         # Impute age
+         pop_birth_day_imputed = ifelse(is.na(pop_birth_day), "Yes", "No"),
+         pop_birth_month_imputed = ifelse(is.na(pop_birth_month), "Yes", "No"),
+         pop_birth_year_imputed = ifelse(is.na(pop_birth_year), "Yes", "No"),
+         pop_birth_month = ifelse(is.na(pop_birth_month), 6, pop_birth_month),
+         pop_birth_day = ifelse(is.na(pop_birth_day), 15, pop_birth_day),
+         pop_birth_year = ifelse(pop_birth_year > 1900, pop_birth_year, NA),
+         dob = as.Date(paste(pop_birth_month, pop_birth_day, pop_birth_year, sep = "/"), format = "%m/%d/%Y"),
+         age = as.numeric(floor((as.Date(demographics_timestamp) - dob) / 365)),
+         age_group = as.factor(case_when(age < 24 ~ "< 24",
+                                         between(age, 25, 39) ~ "25-39",
+                                         between(age, 40, 49) ~ "40-49",
+                                         between(age, 50, 64) ~ "50-64",
+                                         age >= 65 ~ "65+",
+                                         is.na(age) ~ NA_character_,
+                                         TRUE ~ NA_character_)),
+         division = as.factor(division)) %>%
+  # pop race
+  unite("pop_race_tmp", pop_race___1:pop_race___8, na.rm = T, sep = ',') %>% 
+  mutate(pop_race = as.factor(case_when(grepl("Black", pop_race_tmp) ~ "Black", 
+                                        grepl("Latinx", pop_race_tmp) ~ "Latinx", 
+                                        # me / me + white = ME (try)
+                                        pop_race_tmp %in% c("ME", "ME,White") ~ "ME",
+                                        # me + other race = multi_racial/other
+                                        # more than 2 groups = multi_racial/other
+                                        !pop_race_tmp %in% c("Black", "Asian", "White", "Latinx", "AIAN", "NHPI", "Other", "") ~ "Multi_racial",
+                                        pop_race_tmp == "" ~ NA_character_, 
+                                        TRUE ~ pop_race_tmp)),
+         pop_race = fct_relevel(pop_race, "White"),
+         pop_covid_yn = factor(pop_covid_yn, label = c("Yes", "No", "I dont know")),
+         gender_id2 = factor(ifelse(gender_id %in% "Other", NA, gender_id), labels = c("Female", "Male")),
+         pop_race2 = factor(ifelse(pop_race %in% c("AIAN", "ME", "NHPI", "Other", "Multi_racial"), "Other", pop_race), 
+                            label = c("White", "Asian", "Black", "Latinx", "Other")),
+         age_group2 = factor(ifelse(age_group %in% c("50-64", "65+"), "50+", age_group), 
+                                label = c("< 24", "24-39", "40-49", "50+")), 
+         vaccinated = factor(vaccinated, label = c("Yes", "One dose", "Not vaccinated"))) %>% 
+  rename(knowledge_09 = covid_knowledge) %>% 
+  mutate(
+      # Recode attitudes: Reverse code 1, 2, 3, 4, 6, 8, 13, 17, 18, 19, 20, 21
+      attitudes_1 = 6 - attitudes_1,
+      attitudes_2 = 6 - attitudes_2,
+      attitudes_3 = 6 - attitudes_3,
+      attitudes_4 = 6 - attitudes_4,
+      attitudes_6 = 6 - attitudes_6,
+      attitudes_8 = 6 - attitudes_8,
+      attitudes_13 = 6 - attitudes_13,
+      attitudes_17 = 6 - attitudes_17,
+      attitudes_18= 6 - attitudes_18,
+      attitudes_19 = 6 - attitudes_19,
+      attitudes_20 = 6 - attitudes_20,
+      attitudes_21 = 6 - attitudes_21,
+      attitudes_avg1to21 = rowMeans(across(attitudes_1:attitudes_21), na.rm = TRUE),
+      # Knowledge (average)
+      knowledge_avg0to5 = rowMeans(across(c(knowledge_01:knowledge_05, knowledge_09), na.rm = TRUE))
+  )
+
+# Create analysis cohort
+output2 <- output %>%
+  # Only look at vaccinated individuals
+  filter(vaccinated %in% c("Yes", "One dose"), 
+         booster != "") %>%
+  mutate(vaccinated = fct_drop(vaccinated))
+  # mutate(
+  #   # make gender id "Other" = NA
+  #   gender_id2 = ifelse(gender_id %in% "Other", NA, gender_id),
+  #   # pop_race create 'other'
+  #   # pop_race2 = ifelse(pop_race %in% c("AIAN", "ME", "NHPI", "Other", "Multi_racial"), "Other", pop_race),
+  #   # age group collapse 50+ and 65+
+  #   age_group2 = ifelse(age_group %in% c("50-64", "65+"), "50+", age_group))
+
+```
+
+
+# Comments
+
+Using direct download from RedCap (10/01/2021), subset and data cleaning steps from Kush script:  
+- check for 'usc.edu' suffix  
+- remove duplicate entries  
+- 'demographic_complete' == 'complete' responses only  
+\
+Summaries and models include responses from all student, staff, and faculty participants combined.  
+\
+Ethnic group definition - **groups were defined as follows:**   
+- Latinx + any other group except black = Latinx   
+- Latinx + black = Black   
+- Any combination other than single responses = multiethnic   
+\
+\
+Created summary variables for attitudes and knowledge question items, need guidance to summarize remaining questions e.g. coras, behaviors, etc.
+
+<br>
+
+Student N:  
+```{r}
+nrow(student)
+```
+
+<br>
+
+Staff N:
+```{r}
+nrow(staff)
+```
+
+
+<br>
+
+---
+
+<br> 
+
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+<!-- ======================================================================= -->
+
+## Exclusions
+Compare vaccine status with booster willingness
+\
+\
+Decision: limit summaries and models to individuals who reported receiving at least one dose of COVID-19 vaccine AND who responded to the booster question.
+\
+\
+Total excluded N = 67
+\
+Final sample size N = 3,587
+
+```{r}
+create_table_twoway(output, booster, vaccinated)
+```
+
+<br>
+
+---
+
+<br>
+
+
+
+# Vaccine/booster {.tabset}
+
+## Booster
+"How often would you be willing to get a COVID-19 booster, if offered?"
+```{r}
+create_table_twoway(output2, vaccine_booster_factor, booster)
+```
+
+## Vaccination
+```{r}
+create_table_oneway(output2, vaccinated)
+```
+
+## Vaccination vs booster
+```{r}
+create_table_twoway(output2, booster, vaccinated)
+```
+
+
+## Demographic Table
+```{r}
+tableone::CreateTableOne(vars = c("gender_id2",
+                                  "age_group2", 
+                                  "pop_race2",
+                                  "pop_covid_yn",
+                                  "division",
+                                  "knowledge_avg0to5",
+                                  "attitudes_avg1to21"
+                                  ),
+                         data = output2,
+                         strata = "booster",
+                         factorVars = c("gender_id2",
+                                        "age_group2", 
+                                        "pop_race2",
+                                        "pop_covid_yn", 
+                                        "division"))
+
+
+```
+## logit
+```{r, results = 'asis'}
+model1 <- glm(booster ~ vaccinated, data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+# Gender Identity {.tabset}
+
+## gender id
+```{r}
+create_table_oneway(output2, gender_id)
+```
+
+## gender id vs booster
+```{r}
+create_table_twoway(output2, booster, gender_id)
+```
+
+## booster ~ gender_id (logit)
+Excludes gender_id = "Other"
+```{r, results = 'asis'}
+model1 <- glm(booster ~ gender_id2, data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## booster ~ gender_id (logbin) 
+Excludes gender_id = "Other"
+```{r}
+model1 <- logbin(booster ~ gender_id2, data = output2)
+summary(model1)
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+# COVID {.tabset}
+
+## COVID infection
+```{r}
+create_table_oneway(output2, pop_covid_yn)
+```
+
+## COVID infection vs booster
+```{r}
+create_table_twoway(output2, pop_covid_yn, booster)
+```
+
+## logit
+```{r, results = 'asis'}
+model1 <- glm(booster ~ pop_covid_yn, data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## logbin
+```{r}
+model1 <- logbin(booster ~ pop_covid_yn, data = output2)
+summary(model1)
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+# Age Groups {.tabset}
+
+## age group
+```{r}
+create_table_oneway(output2, age_group)
+```
+
+## booster vs age group
+```{r}
+create_table_twoway(output2, age_group, booster)
+```
+
+<!-- ## age group (combine 50-65yrs) vs booster -->
+<!-- ```{r} -->
+<!-- create_table_twoway(output2, booster, age_group2) -->
+<!-- ``` -->
+
+## booster vs age group (combine 50-65yrs)
+```{r}
+create_table_twoway(output2, age_group2, booster)
+```
+
+## logit age_group
+```{r, results = 'asis'}
+model1 <- glm(booster ~ age_group,  data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## lm age_group
+(continuous vaccine_booster categories e.g. never, 1 per year, 2 per year, etc)
+```{r, results = 'asis'}
+model1 <- lm(vaccine_booster ~ age_group,  data = output2)
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## logit age_group2
+Same as age_group model, but collapsing all individuals 50+ years old
+```{r, results = 'asis'}
+model1 <- glm(booster ~ age_group2,  data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## logbin age_group2
+```{r}
+model1 <- logbin(booster ~ age_group2, data = output2)
+summary(model1)
+```
+
+<br>
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+# Race {.tabset}
+
+## Race group
+```{r}
+create_table_oneway(output2, pop_race)
+```
+
+## Race group vs booster
+```{r}
+create_table_twoway(output2, booster, pop_race)
+```
+
+## Race group (merge groups) vs booster
+Race group variable with "AIAN", "ME", "NHPI", "Other", "Multi_racial" grouped into "Other"
+```{r}
+create_table_twoway(output2, pop_race2, booster)
+```
+
+## logit
+Race group variable with "AIAN", "ME", "NHPI", "Other", "Multi_racial" grouped into "Other"
+```{r, results = 'asis'}
+model1 <- glm(booster ~ pop_race2, data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## logbin
+```{r}
+model1 <- logbin(booster ~ pop_race2, data = output2)
+summary(model1)
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+# Division {.tabset}
+
+## Division
+```{r}
+create_table_oneway(output2, division)
+```
+
+## logit
+```{r, results = 'asis'}
+model1 <- glm(booster ~ division, data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+# Attitudes - individual questions {.tabset}
+**Excludes missing/NULL responses (complete case)**
+\
+**Questions 1-21 -- 1 (strongly disagree) - 5 (strongly agree), modeled as continuous variables**
+\
+**Questions 22-32 -- 1 (strongly disagree) - 6 (strongly agree), modeled as continuous variables**
+```{r, results="asis"}
+#rep(" ", 21),
+# lookup table for question descriptions
+lookup <- c("When scientists change their mind about a scientific idea it diminishes my trust in their work.",
+            "Scientists ignore evidence that contradicts their work.", 
+            "Scientific theories are weak explanations.", 
+            "Scientists intentionally keep their work secret.",
+            "We can trust scientists to share their discoveries even if they don't like their findings.", 
+            "Scientists don't value the ideas of others.",
+            "I trust the work of scientists to make life better for people.",
+            "Scientists don't care if laypersons understand their work.", 
+            "We should trust the work of scientists.",
+            "We should trust that scientists are being honest in their work.",
+            "We should trust that scientists are being ethical in their work.",
+            "Scientific theories are trustworthy.", 
+            "When scientists form a hypothesis, they are just guessing.",
+            "People who understand science more have more trust in science.",
+            "We can trust science to find the answers that explain the natural world.", 
+            "I trust scientists can find solutions to our major technological problems.", 
+            "We cannot trust scientists because they are biased in their perspectives.",
+            "Scientists will protect each other even when they are wrong.",
+            "We cannot trust scientists to consider ideas that contradict their own.",
+            "Today's scientists will sacrifice the well-being of others to advance their research.", 
+            "We cannot trust science because it moves too slowly.",
+            "Wearing a mask helps keep me safe from Coronavirus.", 
+            "Wearing a mask helps keep others safe from Coronavirus.", 
+            "Wearing a mask is dangerous to my health.",
+            "Wearing or not wearing a mask is a political statement.",
+            "Wearing a mask is not needed because I am not infected.",
+            "Wearing a mask is not needed when I am with other people who are healthy.",
+            "Others may feel threatened if I cover my face.",
+            "I keep enough distance so that I don't need a mask.",
+            "We live in a free country and no one can force me to wear a mask.",
+            "I would like to wear a mask, but I cannot afford to buy one",
+            "Wearing a mask is unnecessary because coronavirus is not a serious threat to people like me.",
+            "I feel safe not wearing a mask in indoor spaces other than my home (e.g., restaurants, gyms, bars, grocery stores, museums).")
+
+for(i in 1:33) {
+  cat("  \n## Q", i , "\n")
+  cat(lookup[i], "\n")
+  model1 <- glm(glue("booster ~ attitudes_{i}"), data = output, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+  cat("  \n")
+}
+```
+
+## Summary Table
+
+booster never/ever tabulation
+```{r}
+table(output$booster)
+```
+
+```{r}
+datatable(read_excel("ttest_summaries.xlsx", sheet = "attitudes"))
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+# Attitudes - combined variable {.tabset}
+Create combined attitudes variable (see Chris instructions)
+\
+\
+Important: attitudes summary variable only includes questions 1, 2, 3, 4, 6, 8, 13, 17, 18, 19, 20, 21
+\
+<!-- - combined variable only includes individuals who responded to all questions **(Is there a way to include all individuals?)** -->
+\
+
+## Missingness 
+```{r}
+# let's visualize missingness by column .. 
+p1 <- output2 %>%
+  dplyr::select(contains("attitudes")) %>% 
+  summarise_all(list(~is.na(.))) %>%
+  pivot_longer(everything(),
+               names_to = "variables", values_to="missing") %>%
+  count(variables, missing) %>%
+  ggplot(aes(y=variables,x=n,fill=missing))+
+  geom_col(position = "fill")+
+  labs(x="Proportion")+
+  scale_fill_manual(values=c("skyblue3","gold"))+
+  theme(axis.title.y=element_blank(), 
+        axis.text.y = element_text(size = 6))
+p1
+```
+
+## Cronbach's Alpha
+```{r}
+cronbach.alpha(
+  output2 %>% 
+    dplyr::select(attitudes_1:attitudes_22) %>%
+    filter(complete.cases(.))
+)
+```
+
+## Summary
+```{r}
+summary(output2$attitudes_avg1to21)
+
+# boxplot(output2$attitudes_avg1to21)
+boxplot(attitudes_avg1to21 ~ booster, data = output2, xlab = "Booster willingness", ylab = "Combined attitudes variable (mean)")
+```
+
+## Logit
+```{r, results = 'asis'}
+model1 <- glm(booster ~ attitudes_avg1to21, data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+
+
+# Knowledge - individual questions {.tabset}
+**Excludes missing/NULL responses (complete case)**
+\
+**Scale: 1 (very unreliable) - 7 (very reliable), modeled as continuous variables**
+```{r, results="asis"}
+
+# lookup table for question descriptions
+lookup <- c("Being able to hold your breath for 19 seconds or more without coughing or discomfort is a 
+            good self-check test for whether you have the coronavirus.", 
+            "The coronavirus is a part of a global effort to enforce mandatory vaccinations.", 
+            "Gargling with salt water or lemon juice reduces the risk of infection from coronavirus.", 
+            "5G networks may be making us more susceptible to the virus.",
+            "Breathing in hot air through your mouth and nose kills the coronavirus as it can only live in cool places.", 
+            "People with diabetes are at high risk for complications from the coronavirus.", 
+            "Using hand sanitizer with at least 60% alcohol is effective in reducing the risk of infection from coronavirus.", 
+            "Taking ibuprofen when you are infected with the coronavirus could make your symptoms worse.",
+            "The coronavirus was bioengineered in a military lab in Wuhan.")
+
+for(i in 1:9) {
+  cat("  \n## Q", i , "\n")
+  cat(lookup[i], "\n")
+  model1 <- glm(glue("booster ~ knowledge_{formatC(i, width = 2, flag = '0')}"), data = output, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+  cat("  \n")
+}
+```
+
+
+## Summary table
+
+booster never/ever tabulation
+```{r}
+table(output$booster)
+```
+
+```{r}
+datatable(read_excel("ttest_summaries.xlsx", sheet = "knowledge"))
+```
+
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+
+
+
+# Knowledge - combined variable {.tabset}
+Create combined knowledge variable (see Chris instructions)
+
+## Missingness 
+```{r}
+# let's visualize missingness by column .. 
+p1 <- output2 %>%
+  dplyr::select(contains("knowledge")) %>% 
+  summarise_all(list(~is.na(.))) %>%
+  pivot_longer(everything(),
+               names_to = "variables", values_to="missing") %>%
+  count(variables, missing) %>%
+  ggplot(aes(y=variables,x=n,fill=missing))+
+  geom_col(position = "fill")+
+  labs(x="Proportion")+
+  scale_fill_manual(values=c("skyblue3","gold"))+
+  theme(axis.title.y=element_blank(), 
+        axis.text.y = element_text(size = 6))
+p1
+```
+
+## Cronbach's Alpha
+```{r}
+cronbach.alpha(
+  output2 %>% 
+    dplyr::select(knowledge_01:knowledge_05, knowledge_09) %>%
+    filter(complete.cases(.))
+)
+```
+
+## Summary
+```{r}
+summary(output2$knowledge_avg0to5)
+boxplot(knowledge_avg0to5 ~ booster, data = output2, xlab = "Booster willingness", ylab = "Combined knowledge variable (mean)")
+```
+
+## Logit
+```{r, results = 'asis'}
+model1 <- glm(booster ~ knowledge_avg0to5, data = output2, family = 'binomial')
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+# Multivariate Models {.tabset}
+
+## Logit
+```{r, results = 'asis'}
+
+# model1 <- glm(booster ~    age_group2 + gender_id2 + pop_race2 + pop_covid_yn + vaccinated, data = output2, family = "binomial")
+# 
+# 
+
+model1 <- glm(booster ~    age_group2 + gender_id2 + pop_race2 + pop_covid_yn + division + knowledge_avg0to5 + attitudes_avg1to21, data = output2,
+           family = "binomial")
+model1 <- glm(booster ~    age_group2 + gender_id2 + pop_race2 + pop_covid_yn + vaccinated + knowledge_avg0to5 + attitudes_avg1to21, data = output2, family = "binomial")
+
+stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+
+## Prevalence Ratio using Poisson Regression
+
+```{r, results = 'asis'}
+
+# Gender ID 
+model1 <- glm(booster ~ gender_id2, data = output2, family = "poisson")
+lmtest::coeftest(model1, vcov = sandwich)
+
+# Age
+model1 <- glm(booster ~ age_group2, data = output2, family = "poisson")
+lmtest::coeftest(model1, vcov = sandwich)
+
+# Race
+model1 <- glm(booster ~ pop_race2, data = output2, family = "poisson")
+lmtest::coeftest(model1, vcov = sandwich)
+
+# Prior COVID
+model1 <- glm(booster ~ pop_covid_yn, data = output2, family = "poisson")
+lmtest::coeftest(model1, vcov = sandwich)
+
+# Division
+model1 <- glm(booster ~ division, data = output2, family = "poisson")
+lmtest::coeftest(model1, vcov = sandwich)
+
+# Misinformation
+model1 <- glm(booster ~ knowledge_avg0to5, data = output2, family = "poisson")
+lmtest::coeftest(model1, vcov = sandwich)
+
+# Attitudes
+model1 <- glm(booster ~ attitudes_avg1to21, data = output2, family = "poisson")
+lmtest::coeftest(model1, vcov = sandwich)
+```
+
+
+
+### Multivariate
+```{r, results = 'asis'}
+model1 <- glm(booster ~ gender_id2 + age_group2 + pop_race2 + pop_covid_yn + division + knowledge_avg0to5 + attitudes_avg1to21, data = output2, family = "poisson")
+
+a = lmtest::coeftest(model1, vcov = sandwich); a
+
+round(cbind(exp(a[, 1]),
+exp(a[, 1] - 1.96 * a[, 2]),
+exp(a[, 1] + 1.96 * a[, 2]),
+a[, 4]), 3)
+
+```
+
+## Logbin
+(exclude, computationally intensive)
+
+<!-- ```{r} -->
+<!-- model2 <- logbin(booster ~ age_group2 + gender_id2 + pop_race2 + pop_covid_yn + division, data = output2) -->
+<!-- summary(model2) -->
+<!-- ``` -->
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+
+
+
+# Behaviours - Individual questions {.tabset}
+**Includes Q1-Q14, Q16-18 only**
+\
+**Excludes missing/NULL/NA responses (complete case)**
+\
+\
+**Questions 1-14 -- 1 (never) - 5 (always), 6 (N/A), modeled as continuous variables**
+\
+**Questions 16-18 -- 1 (strongly disagree) - 6 (strongly agree), modeled as continuous variables**
+```{r, results="asis"}
+#rep(" ", 21),
+# lookup table for question descriptions
+lookup <- c("In the past week, when do you wear a mask: At work",
+            "In the past week, when do you wear a mask: General errands (shopping, getting gas, school drop-off, etc.)", 
+            "In the past week, when do you wear a mask: Family gatherings of any size", 
+            "In the past week, when do you wear a mask: Small social groups", 
+            "In the past week, when do you wear a mask: Religious functions", 
+            "In the past week, when do you wear a mask: Public events", 
+            "In the past week, when do you wear a mask: When exposed to others I do not live with", 
+            "In the past week, when do you wear a mask: When people deliver food or other items to me that is not contactless", 
+            "In the past week, when do you wear a mask: When doing sports of any kind", 
+            "In the past week, how often did you do the following: Physical distancing (e.g., try to always stay 6 feet away from others)",
+            "In the past week, how often did you do the following: Staying home while mildly sick (Note mildly sick is defined as runny nose, mild couth, mild sore throat but no fever or trouble breathing",
+            "In the past week, how often did you do the following: Complete Trojan Check every time you're on campus",
+            "In the past week, how often did you do the following: Attend gatherings with more than one household",
+            "In the past week, how often did you do the following: Going to bars, pubs, nightclubs, lounges",
+            "If a business requires masks to enter, are you: ",
+            
+            "I am worried about COVID-19 variants", 
+            "Since Los Angeles has loosened restrictions, I believe COVID-19 is no longer a serious threat.", 
+            "I think all healthcare providers should be vaccinated against COVID-19.", 
+            
+            "Do you know anyone who is vaccinated and then got COVID-19 after?", 
+            "Did they get COVID-19...",
+            "How serious was their illness?", 
+            "Did they spread COVID-19 to others?")
+
+output_tmp <- output %>% 
+  mutate(across(.cols = c(behaviours_01:behaviours_14), ~ ifelse(.x == 6, NA, .x)))
+
+for(i in 1:14) {
+  cat("  \n## Q", i , "\n")
+  cat(lookup[i], "\n")
+  model1 <- glm(glue("booster ~ behaviours_{formatC(i, width = 2, flag = '0')}"), data = output_tmp, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+  cat("  \n")
+}
+
+for(i in 16:18) {
+  cat("  \n## Q", i , "\n")
+  cat(lookup[i], "\n")
+  model1 <- glm(glue("booster ~ behaviours_{formatC(i, width = 2, flag = '0')}"), data = output, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+  cat("  \n")
+}
+
+
+```
+
+## Q15
+**Questions 15 -- 1 (less likely to enter business), 2 (more likely to enter business), 3 (this would not affect my decision to enter the business)**
+"If a business requires masks to enter, are you: "
+
+```{r, results = 'asis'}
+output_tmp <- output %>% 
+  mutate(behaviours_15 = factor(behaviours_15, label = c("less likely to enter business", 
+                                                         "more likely to enter business", 
+                                                         "this would not affect my decision to enter business")))
+model1 <- glm(glue("booster ~ behaviours_15"), data = output_tmp, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## Q19
+**Question 19-22 -- questions regarding covid infection within social circles**
+
+"Do you know anyone who is vaccinated and then got COVID-19 after?"
+```{r, results = 'asis'}
+output_tmp <- output %>% 
+  mutate(behaviours_19 = factor(behaviours_19, label = c("yes", "no")))
+model1 <- glm(glue("booster ~ behaviours_19"), data = output_tmp, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+
+```
+
+## Q21
+**Question 19-22 -- questions regarding covid infection within social circles**
+
+"How serious was their illness"
+```{r, results = 'asis'}
+output_tmp <- output %>% 
+  mutate(behaviours_21 = factor(behaviours_21, label = c("not serious at all", 
+                                                         "slightly serious", 
+                                                         "serious", 
+                                                         "very serious")))
+model1 <- glm(glue("booster ~ behaviours_21"), data = output_tmp, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+```
+
+## Summary table
+
+```{r}
+datatable(read_excel("ttest_summaries.xlsx", sheet = "behaviours"))
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+
+
+
+
+
+# Coras - individual questions {.tabset}
+**Excludes missing/NULL responses (complete case)**
+\
+**Questions 1,6 -- 1 (extremely unlikely) - 5 (extremely likely), modeled as continuous variables**
+\
+**Questions 2-7 -- 1 (very hard to do) - 5 (very easy to do), modeled as continuous variables**
+\
+**Questions 3-5,7,9-10 -- 1 (strongly disagree) - 5 (strongly agree), modeled as continuous variables**
+\
+**Questions 11 -- 1 (very small) - 5 (very large), modeled as continuous variables**
+```{r, results="asis"}
+
+# lookup table for question descriptions
+lookup <- c("What is your gut feeling about how likely you are to get infected with COVID-19?",
+            "Picturing myself getting COVID-19 is something I find ...", 
+            "I am sure I will NOT get infected with COVID-19.", 
+            "I feel I am unlikely to get infected with COVID-19.", 
+            "I feel vulnerable to COVID-19 infection.", 
+            "How likely are you to infect vulnerable members of your community with COVID-19?", 
+            "I am sure I will NOT infect vulnerable members of my community with COVID-19.", 
+            "Picturing myself infecting vulnerable members of my community with COVID-19 is something I find ...", 
+            "I feel I am unlikely to infect vulnerable members of my community with COVID-19.", 
+            "People I come into contact with are vulnerable to severe illness from COVID-19 infection.", 
+            "I think my chances of infecting other people who will become severely ill with COVID-19 are:")
+
+for(i in 1:11) {
+  cat("  \n## Q", i , "\n")
+  cat(lookup[i], "\n")
+  model1 <- glm(glue("booster ~ coras_{i}"), data = output, family = 'binomial')
+  stargazer(model1, type = 'html', ci=TRUE, ci.level=0.95, single.row = T)
+  cat("  \n")
+}
+```
+
+
+## Summary table
+
+booster never/ever tabulation
+```{r}
+table(output$booster)
+```
+
+```{r}
+
+datatable(read_excel("ttest_summaries.xlsx", sheet = "coras"))
+
+```
+
+# {.unlisted .unnumbered}
+
+<br>
+
+---
+
+<br>
+
+

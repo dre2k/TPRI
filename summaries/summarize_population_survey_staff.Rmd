@@ -1,0 +1,344 @@
+---
+title: "Vaccine study survey summary - staff"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+<!-- <style type="text/css"> -->
+<!-- .main-container { -->
+<!--   max-width: 1800px !important; -->
+<!--   margin-left: auto; -->
+<!--   margin-right: auto; -->
+<!-- } -->
+
+<!-- table, td, th { -->
+<!--   border: none; -->
+<!--   padding-left: 1em; -->
+<!--   padding-right: 1em; -->
+<!--   margin-top: 1em; -->
+<!--   margin-bottom: 1em; -->
+<!-- } -->
+
+<!-- /* Whole document: */ -->
+<!-- body{ -->
+<!--   font-family: Arial; -->
+<!--   font-size: 12pt; -->
+<!-- } -->
+<!-- /* Headers */ -->
+<!-- h1{ -->
+<!-- font-size: 18pt; -->
+<!-- } -->
+
+<!-- h2,h3,h4,h5,h6{ -->
+<!-- font-size: 17pt; -->
+<!-- } -->
+
+
+
+</style>
+
+```{r include = F}
+library(tidyverse)
+library(glue)
+library(DT)
+library(kableExtra)
+library(expss)
+out <- readRDS("E:/USCVaccineStudy/output/vaccinestudy_survey_staff_2021-06-09.rds")
+```
+
+
+<!-- # Comments   -->
+
+<!-- Summary tables for Vaccine study survey responses. We matched survey responses with PnC using a combination of name, DOB, and email. We limited responses to those flagged as "survey completed" -->
+
+<!-- ## Data sources: -->
+<!-- - Population: PnC report "SARS-CoV-2 USC Population Compliance Report"   -->
+<!--   - DOB and Email (for matchin purposes)   -->
+<!--   - Testing/infection status (see below)   -->
+<!-- - Vaccination: PnC report "COVID Vaccine 1st and 2nd Dose Received - Including History Documentation"   -->
+<!-- - Testing: PnC report "SARS-CoV-2 Viral Lab Panel Detail [Biostats]"   -->
+<!--   - main source of testing/infection status   -->
+<!-- - Survey: Redcap   -->
+
+<!-- ## Questions -->
+<!-- - Testing and population reports don't seem to match 100% (~ 1500 of them are students). Tables below are based only on population compliance and vaccine reports   -->
+<!-- - a few individuals responded to the survey more than once, with different responses in some fields - sometimes because of typos, different emails, or changes in response for some fields. I chose to keep the most recent entries in these cases   -->
+
+
+<!-- ---  -->
+
+# Sex
+
+## Survey
+Missing = 10
+```{r}
+out %>% tab_cells(PSS_SEX.FACTOR) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+<!-- ## PnC population compliance -->
+<!-- ```{r} -->
+<!-- out %>% tab_cells(SEX_PNC) %>%  -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
+<!-- ## Survey vs PnC -->
+<!-- ```{r} -->
+<!-- out %>% tab_cells(SEX.FACTOR) %>%  -->
+<!--   tab_cols(SEX_PNC, total()) %>% -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
+<br><br>
+
+# Race
+
+## Survey
+```{r}
+# survey responses
+
+out %>% tab_cells(RACE_GROUP) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+<!-- ## Survey (multi-racial group) -->
+
+<!-- Create multi-racial category   -->
+<!-- Latinx + white, asian, middle eastern, or 'other' = combine with latinx group   -->
+<!-- Latinx + black = combine with black group   -->
+<!-- All else multiple choice race = multi_racial -->
+
+<!-- ```{r} -->
+<!-- out <- out %>% -->
+<!--   mutate(race_simple =  case_when(race %in% c("Asian,Latinx", "Latinx,ME", "Latinx,White", "Latinx,Other") ~ "Latinx",  -->
+<!--                                   race %in% c("Black,Latinx") ~ "Black",  -->
+<!--                                   !race %in% c("Black", "Asian", "White", "Latinx", "AIAN", "NHPI", "Other") ~ "Multi_racial", -->
+<!--                                   TRUE ~ race)) -->
+
+<!-- # survey responses - group multi-racial response into single group -->
+<!-- # table(out$race_simple) -->
+<!-- out %>% tab_cells(race_simple) %>%  -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
+
+## Survey "Other" race_specify
+For individuals who reported race as "Other", did they specify race in field called "race_specify"
+
+```{r}
+# FYI - check for 'race_specify' response among "other" race
+race_other <- dplyr::filter(out, RACE == "Other")
+
+# PnC population
+out %>% tab_cells(PSS_RACE_SPECIFY) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+
+<!-- ## PnC population compliance  -->
+<!-- ```{r} -->
+<!-- # PnC population - collapse groups -->
+<!-- out <- out %>%  -->
+<!--   mutate(ETHNICITY_SIMPLE = case_when(ETHNICITY %in% c("Asia Indian/Indian-American/Pakistani-American", "Asian/Asian-American", "Chinese/Chinese-American", "Filipino/Filipino-American", "Korean/Korean-American") ~ "pnc_Asian",  -->
+<!--                                       ETHNICITY %in% c("Mexican/Mexican-American/Chicano", "Spanish-American/Hispanic/Latino") ~ "pnc_Latinx",  -->
+<!--                                       ETHNICITY %in% c("American Indian/Alaskan Native") ~ "pnc_AIAN",  -->
+<!--                                       ETHNICITY %in% c("Middle East") ~ "pnc_ME",  -->
+<!--                                       ETHNICITY %in% c("White/European/European-American") ~ "pnc_White",  -->
+<!--                                       ETHNICITY %in% c("Black Or African-American") ~ "pnc_Black",  -->
+<!--                                       ETHNICITY %in% c("Native Hawaiian/Pacific Islander") ~ "pnc_NHPI", -->
+<!--                                       TRUE ~ ETHNICITY)) -->
+<!-- out %>% tab_cells(ETHNICITY) %>%  -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+
+<!-- ``` -->
+
+
+
+<!-- ## Survey vs PnC -->
+
+<!-- Combined race PnC groups into broader categories   -->
+<!-- - "Asia Indian/Indian-American/Pakistani-American", "Asian/Asian-American", "Chinese/Chinese-American", "Filipino/Filipino-American", "Korean/Korean-American" = pnc_Asian   -->
+<!-- - "Mexican/Mexican-American/Chicano", "Spanish-American/Hispanic/Latino" = pnc_Latinx   -->
+<!-- - "American Indian/Alaskan Native" = pnc_AIAN   -->
+<!-- - "Middle East" = pnc_ME    -->
+<!-- - "White/European/European-American" = pnc_white   -->
+<!-- - "Black Or African-American" = pnc_black -->
+
+<!-- ```{r} -->
+<!-- # PnC population vs Survey -->
+<!-- out <- apply_labels(out,  -->
+<!--                     ETHNICITY_SIMPLE = "PnC Race",  -->
+<!--                     race_simple = "Survey Race") -->
+
+
+<!-- out %>% tab_cells(race_simple) %>%  -->
+<!--   tab_cols(ETHNICITY_SIMPLE, total()) %>% -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
+<br><br>
+
+
+# Covid status
+
+## Survey
+```{r}
+# Survey
+out %>% tab_cells(PSS_COVID_YN.FACTOR) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+## Survey - "did a doctor say you have covid"
+```{r}
+out %>% tab_cells(PSS_COVID_YN.FACTOR) %>% 
+  tab_cols(PSS_COVID_DR.FACTOR, total()) %>%
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+
+## PnC population compliance
+```{r}
+# Survey
+out %>% tab_cells(POP_TESTEDPOSITIVE) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+
+## Survey vs PnC
+```{r}
+# Survey vs PnC Population
+out <- apply_labels(out, 
+             PSS_COVID_YN.FACTOR = "Survey COVID", 
+             POP_TESTEDPOSITIVE = "PnC COVID", 
+             PO_TESTED = "PnC Testing Status")
+out %>% tab_cells(PSS_COVID_YN.FACTOR) %>% 
+  tab_cols(POP_TESTEDPOSITIVE, total()) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+
+<br><br>
+
+# Vaccine status
+
+## Survey - vaccine yes/no vs number of doses
+```{r}
+# vaccine yes/no vs number of doses
+# table(out$DOSES, out$VACCINE_YN, useNA = 'ifany')
+out %>% tab_cells(PSS_VACCINE_YN.FACTOR) %>% 
+  tab_cols(PSS_DOSES.FACTOR, total()) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+## Survey - vaccine yes/no vs type
+```{r}
+out %>% tab_cells(PSS_VACCINE_YN.FACTOR) %>% 
+  tab_cols(PSS_VACCINE_TYPE.FACTOR, total()) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+## Survey - vaccine hesitation
+(should be all vaccine_yn = NO)
+```{r}
+out %>% tab_cells(PSS_VACCINE_YN.FACTOR) %>% 
+  tab_cols(PSS_VACCINE_HESITATE.FACTOR, total()) %>% 
+  tab_stat_cases() %>%
+  tab_pivot()
+```
+
+
+<!-- ## PnC population compliance -->
+<!-- (individuals who have received at least one dose of vaccine. As of 4/19, 829/881 students have received both doses of a COVID19 vaccine) -->
+<!-- ```{r} -->
+
+<!-- # have received at least one dose of vaccine -->
+<!-- out <- out %>%  -->
+<!--   mutate(isVaccinated = case_when(isFullyVaccinated == 1 | isPartiallyVaccinated == 1 ~ 1,  -->
+<!--                                   TRUE ~ 0)) -->
+
+<!-- out %>% tab_cells(isVaccinated) %>%  -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
+
+<!-- ## Survey vs PnC -->
+<!-- ```{r} -->
+<!-- out <- mutate(out, isVaccinated_na = case_when(is.na(isVaccinated) ~ 0,  -->
+<!--                                      TRUE ~ isVaccinated)) -->
+<!-- out <- apply_labels(out, -->
+<!--                    VACCINE_YN.FACTOR = "Survey vaccine status",  -->
+<!--                    isVaccinated_na = "PnC vaccine status") -->
+<!-- out %>% tab_cells(VACCINE_YN.FACTOR) %>%  -->
+<!--   tab_cols(isVaccinated_na, total()) %>%  -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+
+<!-- # kable(addmargins(table(out$VACCINE_YN, out$isVaccinated, useNA = 'ifany'))) -->
+<!-- # out %>% tab_cells(VACCINE_YN) %>%  -->
+<!-- #   tab_cols(isVaccinated, total()) %>%  -->
+<!-- #   tab_stat_cases() %>% -->
+<!-- #   tab_pivot() -->
+<!-- ``` -->
+
+
+
+<!-- <br><br> -->
+
+
+
+<!-- # Counts by sex, race, vaccination and covid status -->
+<!-- Based on survey responses only -->
+
+
+<!-- ## sex, race, vaccination -->
+<!-- ```{r} -->
+<!-- out %>% tab_cells(race_simple) %>% -->
+<!--   tab_cols(list(SEX.FACTOR %nest% VACCINE_YN.FACTOR) ) %>% -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
+<!-- <br> -->
+
+<!-- ## sex, race, vaccination -- NO (known) covid infections -->
+<!-- ```{r} -->
+<!-- out_covidNo <- filter(out, COVID_YN.FACTOR == "No") -->
+
+<!-- out_covidNo %>% tab_cells(race_simple) %>% -->
+<!--   tab_cols(list(SEX.FACTOR %nest% VACCINE_YN.FACTOR) ) %>% -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
+<!-- <br> -->
+
+<!-- ## sex, race, vaccination -- YES covid infections -->
+<!-- ```{r} -->
+<!-- out_covidYes <- filter(out, COVID_YN.FACTOR == "Yes") -->
+
+<!-- out_covidYes %>% tab_cells(race_simple) %>% -->
+<!--   tab_cols(list(SEX.FACTOR %nest% VACCINE_YN.FACTOR) ) %>% -->
+<!--   tab_stat_cases() %>% -->
+<!--   tab_pivot() -->
+<!-- ``` -->
+
