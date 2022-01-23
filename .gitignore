@@ -40,6 +40,7 @@ vignettes/*.pdf
 .Renviron
 
 # others
+R_tmp
 data
 data_simple
 .DS_Store

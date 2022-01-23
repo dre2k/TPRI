@@ -132,14 +132,14 @@ sum(duplicated(output_tmp$newid))
 # ---------------------------------------------------------------------------- #
 
 # vaccination data.frame (to prioritize individuals when dropping duplicates)
-source("ehr_merge/import_pnc_vac.R")
+source("R/import_pnc_vac.R")
 # output<-left_join(output, vac, 'USCID')
 
 
 # ---------------------------------------------------------------------------- #
 # testing ---- 
 # ---------------------------------------------------------------------------- #
-source("ehr_merge/import_pnc_lab_panel.R")
+source("R/import_pnc_lab_panel.R")
 
 
 # ---------------------------------------------------------------------------- #
@@ -161,21 +161,22 @@ output_poprecordid <- output %>%
   
 
 # ---- USCID Duplicates ---- #
+#
 # prioritize records that responded to multiple waves
 # if both staff student surveys = keep student survey
 dups <- get_dupes(output_poprecordid, pop_uscid)
 
-# check <- get_dupes(output, pop_uscid) %>% 
-#   separate(wave, into = c('a', 'b', 'c'), remove = T) %>% 
-#   mutate(across(.cols = a:c, ~ as.numeric(.x))) %>% 
-#   group_by(pop_record_id) %>% 
-#   mutate(wave = sum(a,b,c, na.rm = T)) %>% ungroup() %>% 
+# check <- get_dupes(output, pop_uscid) %>%
+#   separate(wave, into = c('a', 'b', 'c'), remove = T) %>%
+#   mutate(across(.cols = a:c, ~ as.numeric(.x))) %>%
+#   group_by(pop_record_id) %>%
+#   mutate(wave = sum(a,b,c, na.rm = T)) %>% ungroup() %>%
 #   arrange(wave) %>%
-#   group_by(pop_uscid) %>% 
+#   group_by(pop_uscid) %>%
 #   filter(!duplicated(pop_uscid))
 
-output_poprecordid_uscid <- output_poprecordid %>% 
-  filter(!pop_record_id %in% c('staff_2793', 'staff_879', 'staff_1721', 'staff_40'))
+output_poprecordid_uscid <- output_poprecordid %>%
+  filter(!pop_record_id %in% c('staff_1721', 'staff_40'))
   
 # ---- Email duplicates ---- #
 dups <- get_dupes(output_poprecordid_uscid, pop_email) # no duplicates

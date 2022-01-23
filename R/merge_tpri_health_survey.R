@@ -40,7 +40,13 @@ export_population_survey <- function(category = c("student", "staff"), report_id
   token = scan(glue("data/population_survey_{category}_tkn.txt"), what = 'character')
   formData = list("token"=token, content='report', format='csv', report_id=report_id, csvDelimiter='', rawOrLabel='raw', rawOrLabelHeaders='raw', exportCheckboxLabel='false', returnFormat='csv')
   response = httr::POST(url, body = formData, encode = "form")
-  httr::content(response, guess_max = 10000)
+  httr::content(response, guess_max = 10000) %>% 
+    mutate(usc_email = str_to_lower(usc_email), 
+           name = str_to_title(name), 
+           dob = paste(birth_month, birth_day, birth_year, sep = "/"),
+           dob = as.Date(dob, format = "%m/%d/%Y"),) # %>% 
+    # rename_with( ~ 'pop_uscid', any_of(c("pop_student_id", "pop_usc_id"))) %>%
+    # rename_with( ~ 'tpri_health_survey_timestamp', any_of(c("consent_timestamp")))
 }
 
 export_health_survey <- function(category = c("student", "staff"), wave, report_id) {
@@ -89,7 +95,9 @@ health_staff_w3 <- export_health_survey("staff", 3, 17172)
 
 
 
-# convenience function
+# Cleaning function
+# dat <- health_student_w1
+# wave = 1
 
 clean_health_survey <- function(dat, wave) {
   
@@ -101,7 +109,6 @@ clean_health_survey <- function(dat, wave) {
         dplyr::filter(., !duplicated(.))} %>%
     # for individuals who provided USCID once but not in subsequent responses - fill NAs with the correct value
     group_by(pop_full_name, pop_email) %>% fill(pop_uscid, .direction = 'up') %>% ungroup()
- 
 
   # duplicate names, remove based on timestamp and record id
   # - duplicate names + email
@@ -111,22 +118,40 @@ clean_health_survey <- function(dat, wave) {
     mutate(tpri_health_survey_timestamp = as.Date(tpri_health_survey_timestamp),
            tpri_health_survey_timestamp = if_else(is.na(tpri_health_survey_timestamp), as.Date("1900-01-01"), tpri_health_survey_timestamp)) %>%
     group_by(pop_email) %>%
-    {if (max(.$tpri_health_survey_timestamp) - min(.$tpri_health_survey_timestamp) > 30)
+    {if (max(.$tpri_health_survey_timestamp) - min(.$tpri_health_survey_timestamp) >= 30)
       filter(., tpri_health_survey_timestamp == min(tpri_health_survey_timestamp) & record_id == max(record_id)) else
         filter(., tpri_health_survey_timestamp == max(tpri_health_survey_timestamp) & record_id == max(record_id))} %>% ungroup()  %>%
     group_by(pop_full_name, pop_email) %>%
-    {if (max(.$tpri_health_survey_timestamp) - min(.$tpri_health_survey_timestamp) > 30)
+    {if (max(.$tpri_health_survey_timestamp) - min(.$tpri_health_survey_timestamp) >= 30)
       filter(., tpri_health_survey_timestamp == min(tpri_health_survey_timestamp) & record_id == max(record_id)) else
         filter(., tpri_health_survey_timestamp == max(tpri_health_survey_timestamp) & record_id == max(record_id))} %>% ungroup()  %>%
-    group_by(pop_full_name, pop_uscid) %>% 
-    {if (max(.$tpri_health_survey_timestamp) - min(.$tpri_health_survey_timestamp) > 30) 
-      filter(., tpri_health_survey_timestamp == min(tpri_health_survey_timestamp) & record_id == max(record_id)) else 
+    group_by(pop_full_name, pop_uscid) %>%
+    {if (max(.$tpri_health_survey_timestamp) - min(.$tpri_health_survey_timestamp) >= 30)
+      filter(., tpri_health_survey_timestamp == min(tpri_health_survey_timestamp) & record_id == max(record_id)) else
+        filter(., tpri_health_survey_timestamp == max(tpri_health_survey_timestamp) & record_id == max(record_id))} %>% ungroup() %>%
+    group_by(pop_full_name, dob) %>%
+    {if (max(.$tpri_health_survey_timestamp) - min(.$tpri_health_survey_timestamp) >= 30)
+      filter(., tpri_health_survey_timestamp == min(tpri_health_survey_timestamp) & record_id == max(record_id)) else
         filter(., tpri_health_survey_timestamp == max(tpri_health_survey_timestamp) & record_id == max(record_id))} %>% ungroup() %>%
     mutate(wave = wave) %>% 
-    rename_with( ~ paste0("w", wave, "_", .x), .cols = c(-pop_record_id, -pop_full_name, -pop_email, -dob, -pop_uscid, -wave))
+    rename_with( ~ paste0("w", wave, "_", .x), .cols = c(-pop_record_id, -pop_full_name, -pop_email, -dob, -pop_uscid, -wave)) %>% 
+    mutate(pop_record_id_old = pop_record_id)
   
   return(tmp_out)
 }
+
+
+
+# function to 'clean' pop_record_id
+tmp <- function(num, ele) {
+  if(num %in% ele) {min(ele, na.rm = T)} else {0}
+}
+
+tmp2 <- function(num2) {
+  max(sapply(pop_survey_record_id_list, tmp, num = num2))
+}
+
+pop_survey_record_id_list <- readRDS("data/pop_survey_student_record_id_list.rds")
 
 
 
@@ -134,6 +159,7 @@ clean_health_survey <- function(dat, wave) {
 # ---- student wave 1 ---- 
 
 w1 <- clean_health_survey(health_student_w1, 1)
+w1$pop_record_id <- map_dbl(w1$pop_record_id_old, ~ tmp2(.x))
 
 # checks
 sum(duplicated(w1$pop_record_id))
@@ -145,21 +171,28 @@ check <- get_dupes(w1, pop_full_name, pop_email) %>%
   dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
 
 check <- get_dupes(w1, pop_record_id) %>%
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, pop_record_id_old)
 
 # no way to know if these are duplicated names or not, keep in database
+# (different DOBs)
 check <- get_dupes(w1, pop_full_name) %>% 
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, dob)
+
+w1 <- filter(w1, pop_record_id != 0)
 
 
 # ---- student wave 2 ---- 
 w2 <- clean_health_survey(health_student_w2, 2)
-  
+w2$pop_record_id <- map_dbl(w2$pop_record_id_old, ~ tmp2(.x))
+
+
+
+
 # check (wave 2 looks much cleaner. However, there are a lot of missing responses)
-sum(duplicated(w2_tmp$pop_record_id))
-sum(duplicated(w2_tmp$pop_full_name))
-sum(is.na(w2_tmp$pop_full_name))
-sum(is.na(w2_tmp$pop_email))
+sum(duplicated(w2$pop_record_id))
+sum(duplicated(w2$pop_full_name))
+sum(is.na(w2$pop_full_name))
+sum(is.na(w2$pop_email))
 
 check <- get_dupes(w2, pop_full_name, pop_email) %>%
   dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
@@ -181,7 +214,10 @@ tmp <- w2 %>%
 
 # ---- student wave 3 ---- 
 w3 <- clean_health_survey(health_student_w3, 3) %>% 
-  filter(!is.na(pop_record_id)) # lol kush
+  filter(!is.na(pop_record_id))
+w3$pop_record_id <- map_dbl(w3$pop_record_id_old, ~ tmp2(.x))
+
+
 
 sum(duplicated(w3$pop_record_id))
 sum(duplicated(w3$pop_full_name))
@@ -208,8 +244,11 @@ tmp <- w3 %>%
 
 
 # ---- staff wave 1 ---- 
-
+pop_survey_record_id_list <- readRDS("data/pop_survey_staff_record_id_list.rds")
 staff_w1 <- clean_health_survey(health_staff_w1, 1)
+staff_w1$pop_record_id <- map_dbl(staff_w1$pop_record_id_old, ~ tmp2(.x))
+
+
 
 # checks
 sum(duplicated(staff_w1$pop_record_id))
@@ -220,10 +259,17 @@ sum(is.na(staff_w1$pop_email))
 check <- get_dupes(staff_w1, pop_full_name, pop_email) %>%
   dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
 
+ # need to remove these (prio uscid available)
+ # this also choose one of the dup pairs correctly
 check <- get_dupes(staff_w1, pop_record_id) %>%
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, dob, w1_record_id) %>% 
+  filter(pop_record_id != 0) %>% arrange(pop_record_id, pop_full_name, pop_uscid) %>% 
+  filter(duplicated(pop_record_id))
 
-# no way to know if these are duplicated names or not, keep in database
+staff_w1 <- staff_w1 %>% 
+  dplyr::filter(pop_record_id != 0, 
+         !w1_record_id %in% check$w1_record_id)
+
 check <- get_dupes(staff_w1, pop_full_name) %>% 
   dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
 
@@ -234,6 +280,9 @@ check <- get_dupes(staff_w1, pop_full_name) %>%
 # ---- staff wave 2 ---- 
 staff_w2 <- clean_health_survey(health_staff_w2, 2) %>% 
   filter(!is.na(pop_record_id))
+staff_w2$pop_record_id <- map_dbl(staff_w2$pop_record_id_old, ~ tmp2(.x))
+
+
 
 # checks
 sum(duplicated(staff_w2$pop_record_id))
@@ -245,17 +294,25 @@ check <- get_dupes(staff_w2, pop_full_name, pop_email) %>%
   dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
 
 check <- get_dupes(staff_w2, pop_record_id) %>%
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, pop_record_id_old, w2_record_id) %>% 
+  filter(pop_record_id != 0) %>% arrange(pop_record_id, pop_full_name, pop_uscid) %>% 
+  filter(duplicated(pop_record_id))
+
+staff_w2 <- staff_w2 %>% 
+  dplyr::filter(pop_record_id != 0, 
+                !w2_record_id %in% check$w2_record_id)
 
 # no way to know if these are duplicated names or not, keep in database
 check <- get_dupes(staff_w2, pop_full_name) %>% 
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, dob)
 
 
 
 # ---- staff wave 2 ---- 
 staff_w3 <- clean_health_survey(health_staff_w3, 3) %>% 
   filter(!is.na(pop_record_id))
+staff_w3$pop_record_id <- map_dbl(staff_w3$pop_record_id_old, ~ tmp2(.x))
+
 
 # checks
 sum(duplicated(staff_w3$pop_record_id))
@@ -267,11 +324,19 @@ check <- get_dupes(staff_w3, pop_full_name, pop_email) %>%
   dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
 
 check <- get_dupes(staff_w3, pop_record_id) %>%
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, pop_record_id_old, w3_record_id) %>% 
+  filter(pop_record_id != 0) %>% arrange(pop_record_id, pop_full_name, pop_uscid) %>% 
+  filter(duplicated(pop_record_id))
+
+staff_w3 <- staff_w3 %>% 
+  dplyr::filter(pop_record_id != 0,
+                !w3_record_id %in% check$w3_record_id)
+
+
 
 # no way to know if these are duplicated names or not, keep in database
 check <- get_dupes(staff_w3, pop_full_name) %>% 
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, dob)
 
 
 
@@ -334,22 +399,30 @@ tpri <- bind_rows(tpri_student, tpri_staff)
 
 # checks
 sum(duplicated(tpri$pop_record_id))
+sum(duplicated(tpri$pop_uscid))
 sum(is.na(tpri$pop_full_name))
 sum(is.na(tpri$pop_email))
 
+idvars <- c("pop_full_name", "pop_email", "pop_uscid", "pop_record_id")
+
 # several people who filled out both student and survey questionnaires
+check <- get_dupes(tpri, pop_uscid) %>%
+  dplyr::select(all_of(idvars))
+check <- get_dupes(tpri, pop_full_name) %>%
+  dplyr::select(all_of(idvars))
 check <- get_dupes(tpri, pop_full_name, pop_email) %>%
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(all_of(idvars))
 check <- get_dupes(tpri, pop_record_id) %>%
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(all_of(idvars))
 
 # no way to know if these are duplicated names or not, keep in database
 # (some cases are obvious, but will defer to analysts)
+# also filled both student and staff, as mentioned above
 check <- get_dupes(tpri, pop_full_name) %>% 
-  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id)
+  dplyr::select(pop_full_name, pop_email, pop_uscid, pop_record_id, dob)
 
 
-saveRDS(tpri, file = "data/tpri_merged_w1_w2_w3_2022_01_14.rds")
+saveRDS(tpri, file = glue("data/{date}_out/tpri_merged_w1_w2_w3_2022_01_14.rds"))
 
 # no identifiers
 
@@ -367,4 +440,4 @@ tpri_deid <- tpri %>%
 
 names(tpri_deid)
 
-write.csv(tpri_deid, file = "data/tpri_merged_w1_w2_w3_2022_01_14_noid.csv", quote = T, row.names = F)
+write.csv(tpri_deid, file = glue("data/{date}_out/tpri_merged_w1_w2_w3_2022_01_14.csv"), quote = T, row.names = F)
