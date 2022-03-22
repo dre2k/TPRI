@@ -16,6 +16,16 @@
 # individuals, I would account for repeats and only chose one as the master pop_record_id for that person
 # ============================================================================ #
 
+library(tidyverse)
+library(data.table)
+library(glue)
+library(janitor)
+library(stringr)
+library(lubridate)
+
+date <- "2022_03_02"
+date <- "2022_03_21"
+
 # population survey 
 export_population_survey <- function(category = c("student", "staff"), report_id) {
   match.arg(category)
@@ -118,7 +128,7 @@ pop_survey_student_record_id_list <- append(alist, blist) %>%
   append(as.list(remain$record_id))
 pop_survey_student_record_id_list <- sapply(pop_survey_student_record_id_list, function(x) x[!is.na(x)])
 
-saveRDS(pop_survey_student_record_id_list, file = "data/pop_survey_student_record_id_list.rds")
+saveRDS(pop_survey_student_record_id_list, file = glue("data/pop_survey_student_record_id_list_{date}.rds"))
 
 
 
@@ -235,7 +245,7 @@ pop_survey_staff_record_id_list <- append(alist, blist) %>%
   append(as.list(remain$record_id))
 pop_survey_staff_record_id_list <- sapply(pop_survey_staff_record_id_list, function(x) x[!is.na(x)])
 
-saveRDS(pop_survey_staff_record_id_list, file = "data/pop_survey_staff_record_id_list.rds")
+saveRDS(pop_survey_staff_record_id_list, file = glue("data/pop_survey_staff_record_id_list_{date}.rds"))
 
 
 
@@ -247,34 +257,32 @@ saveRDS(pop_survey_staff_record_id_list, file = "data/pop_survey_staff_record_id
 
 
 
-
-
-
-# so now... let's take example w1 and try to 'fix' ids. 
-
-w1_test <- data.frame(record_id = w1$pop_record_id, 
-                      fakevar = rnorm(nrow(w1), mean = 0, 1))
-
-#summary record_id
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 1    2614    6456    5854    8777   11616
-
-tmp <- function(num, ele) {
-  if(num %in% ele) {min(ele, na.rm = T)} else {0}
-}
-
-tmp2 <- function(num2) {
-  max(sapply(zz, tmp, num = num2))
-}
-
-dude <- max(sapply(zz, tmp, num = 1114))
-
-
-tmp2(1114)
-
-map_dbl(w1_test$record_id[1:100], ~ tmp2(.x))
-w1_test$record_id2 <- map_dbl(w1_test$record_id, ~ tmp2(.x))
-
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 0    2548    6326    5764    8728   11616
+# - testing - #
+# # so now... let's take example w1 and try to 'fix' ids. 
+# 
+# w1_test <- data.frame(record_id = w1$pop_record_id, 
+#                       fakevar = rnorm(nrow(w1), mean = 0, 1))
+# 
+# #summary record_id
+# # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# # 1    2614    6456    5854    8777   11616
+# 
+# tmp <- function(num, ele) {
+#   if(num %in% ele) {min(ele, na.rm = T)} else {0}
+# }
+# 
+# tmp2 <- function(num2) {
+#   max(sapply(zz, tmp, num = num2))
+# }
+# 
+# dude <- max(sapply(zz, tmp, num = 1114))
+# 
+# 
+# tmp2(1114)
+# 
+# map_dbl(w1_test$record_id[1:100], ~ tmp2(.x))
+# w1_test$record_id2 <- map_dbl(w1_test$record_id, ~ tmp2(.x))
+# 
+# # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# # 0    2548    6326    5764    8728   11616
 

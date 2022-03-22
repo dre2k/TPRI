@@ -17,13 +17,14 @@ library(tidyr)
 # prioritize only certain fields
 
 # testing + covid positivity information 
-# tmp_a <- read.csv("E:/USCVaccineStudy/data/2022_01_14/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_a.csv")
-# tmp_b <- read.csv("E:/USCVaccineStudy/data/2022_01_14/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_b.csv")
-# tmp_c <- read.csv("E:/USCVaccineStudy/data/2022_01_14/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_c.csv")
-# populationData <- bind_rows(tmp_a, tmp_b, tmp_c)
-# saveRDS(populationData, file = "E:/USCVaccineStudy/data/2022_01_14/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats.rds")
+tmp_a <- read.csv(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_a.csv"))
+tmp_b <- read.csv(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_b.csv"))
+tmp_c <- read.csv(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_c.csv"))
+tmp_d <- read.csv(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_d.csv"))
+tmp_e <- read.csv(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_e.csv"))
+populationData <- bind_rows(tmp_a, tmp_b, tmp_c, tmp_d, tmp_e)
+saveRDS(populationData, file = glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats.rds"))
 
-# sars_lab_panel <- readRDS("E:/USCVaccineStudy/data/2022_01_14/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats.rds")
 dat0 <- readRDS(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats.rds")) %>% 
   mutate(USCID = as.numeric(USCID)) %>%
   filter(!duplicated(.), 

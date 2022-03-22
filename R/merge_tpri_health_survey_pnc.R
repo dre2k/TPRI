@@ -19,10 +19,12 @@ library(janitor)
 library(stringr)
 library(lubridate)
 
-date <- "2022_01_14"
+date <- "2022_03_02"
+date <- "2022_03_21"
+
 
 # TPRI merged data
-tpri <- readRDS("data/2022_01_14_out/tpri_merged_w1_w2_w3_2022_01_14.rds") %>% 
+tpri <- readRDS(glue("data/{date}_out/tpri_merged_w1_w2_w3_{date}.rds")) %>% 
   dplyr::select(pop_record_id, pop_full_name, pop_uscid, pop_email, dob, wave) %>% 
   mutate(pop_record_id = str_trim(pop_record_id, side = 'both'), 
          pop_uscid = str_trim(pop_uscid, side = 'both'), 

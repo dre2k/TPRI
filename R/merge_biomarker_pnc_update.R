@@ -14,12 +14,15 @@
 # Goal - match individuals to PnC and TPRI questionnaire responses 
 # 1) summarise demographics (PnC and TPRI responses)
 # 2) summarise positivity over time
+#
+# where as in the health survey I cleaned pop_record_id etc, 
+# in here - prioritize matching to PnC only. treat is as an entirely separate study
 #==============================================================================#
 library(data.table)
 library(tidyverse)
 library(glue)
 library(stringi)
-date <- "2022_01_14"
+date <- "2022_03_02"
 
 
 # ---------------------------------------------------------------------------- #
@@ -28,7 +31,8 @@ date <- "2022_01_14"
 
 url = "https://redcap.med.usc.edu/api/"
 token = scan("data/biomarker_scheduling_tracking_tkn.txt", what = 'character')
-formData = list("token"=token, content='report', format='csv', report_id='11600', csvDelimiter='', rawOrLabel='raw', rawOrLabelHeaders='raw', exportCheckboxLabel='false', returnFormat='csv')
+# formData = list("token"=token, content='report', format='csv', report_id=11600, csvDelimiter='', rawOrLabel='raw', rawOrLabelHeaders='raw', exportCheckboxLabel='false', returnFormat='csv')
+formData = list("token"=token, content='report', format='csv', report_id=17318, csvDelimiter='', rawOrLabel='raw', rawOrLabelHeaders='raw', exportCheckboxLabel='false', returnFormat='csv')
 response = httr::POST(url, body = formData, encode = "form")
 student_p = httr::content(response, guess_max = 10000)
 
@@ -51,14 +55,26 @@ names(bioData) <- paste0("BM_", toupper(names(bioData)))
 # ---------------------------------------------------------------------------- #
 # vaccination data ---- 
 # ---------------------------------------------------------------------------- #
-source("ehr_merge/import_vac_data.R")
+source("R/import_pnc_vac.R")
 # output<-left_join(output, vac, 'USCID')
 
 
 # ---------------------------------------------------------------------------- #
 # import pnc data ---- 
 # ---------------------------------------------------------------------------- #
-source("ehr_merge/import_pnc_data_bm.R")
+
+# specific to 2022_02_02
+# a <- fread(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_a.csv"))
+# b <- fread(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_b.csv"))
+# c <- fread(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_c.csv"))
+# d <- fread(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_d.csv"))
+# e <- fread(glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats_e.csv"))
+# 
+out <- bind_rows(a,b,c,d,e) %>% 
+  mutate(Result.Date = `Result Date`)
+saveRDS(out, file = glue("data/{date}/SARS-CoV-2_Viral_Lab_Panel_Detail_Biostats.rds"))
+
+source("R/import_pnc_lab_panel.R")
 
 
 #------------------------------------------------------------------------------#

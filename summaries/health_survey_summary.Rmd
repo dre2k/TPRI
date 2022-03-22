@@ -1,5 +1,5 @@
 ---
-title: "Vaccine study survey summary - student"
+title: "TPRI Health Survey Summary"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 theme: united
@@ -37,10 +37,9 @@ font-size: 18pt;
 h2,h3,h4,h5,h6{
 font-size: 17pt;
 }
-
-
-
 </style>
+
+
 
 ```{r include = F}
 library(tidyverse)
@@ -49,30 +48,15 @@ library(DT)
 library(kableExtra)
 library(expss)
 library(janitor)
+
+tpri <- readRDS("../data/2022_01_14_out/tpri_merged_w1_w2_w3_2022_01_14.rds")
+
+
 ```
-
-
-<!-- # Comments   -->
-
-<!-- Summary tables for Vaccine study survey responses. We matched survey responses with PnC using a combination of name, DOB, and email. We limited responses to those flagged as "survey completed" -->
-
-<!-- ## Data sources: -->
-<!-- - Population: PnC report "SARS-CoV-2 USC Population Compliance Report"   -->
-<!--   - DOB and Email (for matchin purposes)   -->
-<!--   - Testing/infection status (see below)   -->
-<!-- - Vaccination: PnC report "COVID Vaccine 1st and 2nd Dose Received - Including History Documentation"   -->
-<!-- - Testing: PnC report "SARS-CoV-2 Viral Lab Panel Detail [Biostats]"   -->
-<!--   - main source of testing/infection status   -->
-<!-- - Survey: Redcap   -->
-
-<!-- ## Questions -->
-<!-- - Testing and population reports don't seem to match 100% (~ 1500 of them are students). Tables below are based only on population compliance and vaccine reports   -->
-<!-- - a few individuals responded to the survey more than once, with different responses in some fields - sometimes because of typos, different emails, or changes in response for some fields. I chose to keep the most recent entries in these cases   -->
-
 
 --- 
 
-# Vaccination information - STUDENTS
+# Vaccination information from EHR
 ```{r}
 # read data, create labels for legibility
 out <- readRDS("~/git/USC_VaccineStudy/data/vaccinestudy_survey_student_deidentified_2021-06-16.rds") %>% 
