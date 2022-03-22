@@ -1,19 +1,20 @@
 # =========================================================================== #
-# 'fix' pop_record_id
-#
-# 1) main question -- how are pop_record_ids assigned???
+# Goal: 'fix' pop_record_id
 # 
-# the problem: sometimes the same individual has different pop_record_id 
-# between waves? 
+# The problem: sometimes the same individual has different pop_record_id 
+# between health survey waves. Want to use pop_record_id to merge health survey
+# responses between waves
+#   - (how are pop_record_ids assigned?)
 # 
-# I think when prioritizing which duplicate entry to keep, sometimes in between waves
-# a different pop_record_id entry would be inadvertently chosen 
-# for example - wave 1 i choose the earlier entry, wave 2 the later. 
-# So although these are the same individual, they would have different pop_record_id
+# When prioritizing which duplicate entry to keep, sometimes in between waves
+# a different pop_record_id entry would be inadvertently chosen. For example:
+#   - wave 1 i choose the earlier entry, wave 2 the latter although these are 
+#     the same individual, they would have different pop_record_id
 #
+# Possible solution is to 'fix' pop_record_id such that for duplicate 
+# individuals, only chose ONE as the master pop_record_id for that individual
 #
-# One solution i came up with is 'fixing' pop_record_id such that for duplicate 
-# individuals, I would account for repeats and only chose one as the master pop_record_id for that person
+# use population survey for this
 # ============================================================================ #
 
 library(tidyverse)
@@ -30,6 +31,7 @@ date <- "2022_03_21"
 export_population_survey <- function(category = c("student", "staff"), report_id) {
   match.arg(category)
   
+  # tokens stored locally (encrypted folder), not uploaded to github
   url = "https://redcap.med.usc.edu/api/"
   token = scan(glue("data/population_survey_{category}_tkn.txt"), what = 'character')
   formData = list("token"=token, content='report', format='csv', report_id=report_id, csvDelimiter='', rawOrLabel='raw', rawOrLabelHeaders='raw', exportCheckboxLabel='false', returnFormat='csv')
@@ -45,7 +47,7 @@ export_population_survey <- function(category = c("student", "staff"), report_id
 
 
 # --------------------------------------------------------------------------- #
-# student ----
+# student -------------------------------------------------------------
 # --------------------------------------------------------------------------- #
 
 population_student <- export_population_survey("student", 17173)
@@ -54,10 +56,15 @@ population_student <- population_student %>%
   mutate(pop_email = str_to_lower(coalesce(hipaa_email, hipaa_email_v2))) %>% 
   filter(grepl('usc.edu', pop_email))
 
-# ---- get a list of pop_record_id vectors, where each list item is an individual ---- 
+# IMPORTANT: 
+# ---- get a LIST of pop_record_id VECTORS, where each VECTOR is unique individual ---- 
+# e.g. for each individual, identify all the possible pop_record_id assigned to that person
+# identify unique individuals based on USCID/EMAIL/NAME:DOB
 
-# duplicate uscid 
-a <- get_dupes(population_student %>% filter(!is.na(student_id)), student_id) %>% 
+
+# --- duplicate uscid
+a <- get_dupes(population_student %>% 
+filter(!is.na(student_id)), student_id) %>% 
   dplyr::select(student_id, record_id) %>% 
   group_by(student_id) %>% 
   mutate(row = letters[row_number()]) %>% 
@@ -72,7 +79,7 @@ a1 <- do.call(c, alist)
 a1 <- a1[!is.na(a1)]
 
 
-# duplicate email
+# --- duplicate email
 b <- get_dupes(population_student %>% 
                  filter(!is.na(pop_email), 
                         !record_id %in% a1), pop_email) %>% 
@@ -92,7 +99,7 @@ b1 <- b1[!is.na(b1)]
 
 
 
-# duplicate name + dob (?) 
+# --- duplicate name + dob (?) 
 # (don't worry about the issue of choosing the right pop_record_id based on 
 # availability of uscid since they're supposed to enter that info again in the health survey)
 cc <- get_dupes(population_student %>% 
@@ -121,14 +128,21 @@ remain <- filter(population_student,
                  !record_id %in% c1)
 
 
-# so can you create a list of every 'unique' individual vectors of record_id .. .
-
+# so can you create a list of every 'unique' individual vectors of record_id ..
 pop_survey_student_record_id_list <- append(alist, blist) %>% 
   append(clist) %>% 
   append(as.list(remain$record_id))
+
+# (a bit of cleanup.. remove NAs)
 pop_survey_student_record_id_list <- sapply(pop_survey_student_record_id_list, function(x) x[!is.na(x)])
 
+<<<<<<< HEAD
 saveRDS(pop_survey_student_record_id_list, file = glue("data/pop_survey_student_record_id_list_{date}.rds"))
+=======
+
+# save as R object
+#saveRDS(pop_survey_student_record_id_list, file = "data/pop_survey_student_record_id_list.rds")
+>>>>>>> eb426248e3f9b0e17c17ff414d23139e2f92c429
 
 
 
@@ -255,6 +269,7 @@ saveRDS(pop_survey_staff_record_id_list, file = glue("data/pop_survey_staff_reco
 
 
 
+<<<<<<< HEAD
 
 
 # - testing - #
@@ -283,6 +298,8 @@ saveRDS(pop_survey_staff_record_id_list, file = glue("data/pop_survey_staff_reco
 # map_dbl(w1_test$record_id[1:100], ~ tmp2(.x))
 # w1_test$record_id2 <- map_dbl(w1_test$record_id, ~ tmp2(.x))
 # 
+
+>>>>>>> eb426248e3f9b0e17c17ff414d23139e2f92c429
 # # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 # # 0    2548    6326    5764    8728   11616
 
